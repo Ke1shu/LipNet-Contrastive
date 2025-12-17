@@ -243,10 +243,10 @@ def test(model, net, lossfunc):
 
 
             if lossfunc == contrastive_phonem_loss:
-                y2 = net(vid2)
+                y2 = net(vid3)
                 loss = contrastive_phonem_loss(y, y2, tg)
             elif lossfunc == "combi":
-                y2 = net(vid2)
+                y2 = net(vid3)
                 contrastive_loss = contrastive_phonem_loss(y, y2, tg)
                 ctc_loss = crit(y.transpose(0, 1).log_softmax(-1), txt, vid_len.view(-1), txt_len.view(-1))
 
