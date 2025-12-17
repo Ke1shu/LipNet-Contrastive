@@ -1,3 +1,7 @@
-/data/align/
+/align/
 /phonem/
 /lip/
+/wandb/
+/runs/
+/logs/
+__pycache__
