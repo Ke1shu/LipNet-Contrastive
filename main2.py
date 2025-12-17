@@ -224,8 +224,8 @@ def test(model, net, lossfunc):
             vids = input.get('vids')
             vid1, vid2, vid3 = vids
             vid1 = vid1.cuda()#0
-            vid2 = vid2.cuda()#90
-            vid3 = vid3.cuda()#45
+            vid2 = vid2.cuda()#45
+            vid3 = vid3.cuda()#90
 
             if lossfunc == contrastive_phonem_loss or lossfunc == "combi":
                 # textgrid
@@ -397,9 +397,9 @@ def pre_train(model, net):
             model.train()
             
             vids = input.get('vids')
-            vid1 , vid2, _ = vids
+            vid1 , _ , vid3 = vids #正面と横
             vid1 = vid1.cuda()
-            vid2 = vid2.cuda()
+            vid3 = vid3.cuda()
             txt = input.get('txt').cuda()
             #vid_len = input.get('vid_len').cuda()
             #txt_len = input.get('txt_len').cuda()
@@ -412,7 +412,7 @@ def pre_train(model, net):
             optimizer.zero_grad()
             
             y1 = net(vid1) #[vid_len, batch , gru 512]
-            y2 = net(vid2)
+            y2 = net(vid3)
 
             y = net(vid1)
 
@@ -568,7 +568,7 @@ def pre_train2(model, net):
             model.train()
 
             vids = input.get('vids')
-            vid1, vid2 = vids[0].cuda(), vids[1].cuda()
+            vid1, vid2 = vids[0].cuda(), vids[2].cuda()
             txt = input.get('txt').cuda()
             tg = textgrid2dic(input.get('phonem'))
 
@@ -701,13 +701,13 @@ def combinationLoss(model, net):
             model.train()
 
             vids = input.get('vids')
-            vid1, vid2 = vids[0].cuda(), vids[1].cuda()
+            vid1, vid2 = vids[0].cuda(), vids[2].cuda()
             txt = input.get('txt').cuda()
             tg = textgrid2dic(input.get('phonem'))
 
             optimizer.zero_grad()
-            y1 = net(vid1)#横顔
-            y2 = net(vid2)#正面
+            y1 = net(vid1)#正面
+            y2 = net(vid2)#横
             
 
             # 損失の計算
@@ -851,7 +851,7 @@ def train(model, net):
             model.train()
             
             vids = input.get('vids')
-            vid1 , _  = vids
+            vid1 , _, _  = vids
             vid1 = vid1.cuda()
             #vid2 = vid2.cuda()
             txt = input.get('txt').cuda()
@@ -1017,8 +1017,8 @@ def train2(model, net):
 
             vids = input.get('vids')
             vid1 = vids[0].cuda() #0度
-            vid2 = vids[1].cuda() #90度
-            vid3 = vids[2].cuda() #45度
+            vid2 = vids[1].cuda() #45度
+            vid3 = vids[2].cuda() #90度
 
             txt = input.get('txt').cuda()
             vid_len = input.get('vid_len').cuda()

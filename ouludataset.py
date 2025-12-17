@@ -518,7 +518,7 @@ class MultiView(Dataset):
 
                 #横顔のパスはテキストファイルそのまま
                 profile_path = os.path.join(video_path, line)
-                self.videos.append((profile_path,front_path,center_path))
+                self.videos.append((front_path,center_path,profile_path))
             
         self.data = []
         for vids in self.videos:
