@@ -242,16 +242,16 @@ def test(model, net, lossfunc):
             ########################################
 
 
-            if lossfunc == contrastive_phonem_loss:
+            if lossfunc == contrastive_phonem_loss: #pretrain3
                 y2 = net(vid3)
                 loss = contrastive_phonem_loss(y, y2, tg)
-            elif lossfunc == "combi":
+            elif lossfunc == "combi": #combinationloss
                 y2 = net(vid3)
                 contrastive_loss = contrastive_phonem_loss(y, y2, tg)
                 ctc_loss = crit(y.transpose(0, 1).log_softmax(-1), txt, vid_len.view(-1), txt_len.view(-1))
 
                 loss = 0.5 * contrastive_loss + 0.5 * ctc_loss
-            else:
+            else: #train
                 loss = crit(y.transpose(0, 1).log_softmax(-1), txt, vid_len.view(-1), txt_len.view(-1))
 
             # detach and move loss to CPU before converting to numpy
@@ -623,6 +623,7 @@ def pre_train2(model, net):
         train_logs['loss'].append(epoch_loss)
         train_logs['cer'].append(epoch_cer)
         train_logs['wer'].append(epoch_wer)
+        print(f"[DEBUG] epoch={epoch}, epoch_loss={epoch_loss}, epoch_cer={epoch_cer}, epoch_wer={epoch_wer}")
 
         # エポック単位のログを記録
         wandb.log({
@@ -648,6 +649,141 @@ def pre_train2(model, net):
         print(f'Epoch {epoch}: loss={epoch_loss:.4f}, cer={epoch_cer:.4f}, wer={epoch_wer:.4f}')
 
     print('Training complete.')
+
+def pre_train3(model, net):
+    now = datetime.datetime.now()
+    nowstr = now.strftime("%Y-%m-%d_%H-%M-%S")  # ファイル名に日付と時間を組み込む
+    
+    dataset = MultiView(
+        opt.video_path,
+        opt.anno_path,
+        opt.train_list,
+        opt.vid_padding,
+        opt.txt_padding,
+        'train'
+    )
+    
+    loader = dataset2dataloader(dataset)
+    optimizer = optim.Adam(
+        model.parameters(),
+        lr=opt.base_lr,
+        weight_decay=0.0,
+        amsgrad=True
+    )
+    
+    print(f'num_train_data: {len(dataset.data)}')
+    crit = nn.CTCLoss()
+    tic = time.time()
+
+    train_logs = {'loss': [], 'cer': [], 'wer': []}
+    csvname = f'logs/LipNet_{nowstr}.csv'
+    os.makedirs("logs", exist_ok=True)
+    with open(csvname, 'w', newline='') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(['epoch', 'loss', 'wer', 'cer'])
+
+    val_epoch = 0
+    global_step = 0   # ★ wandb の step はこれに統一
+
+    for epoch in range(opt.max_epoch):
+        loss_sum = 0.0
+        train_wer, train_cer = [], []
+
+        for i_iter, input in enumerate(loader):
+            model.train()
+
+            vids = input.get('vids')
+            vid1 = vids[0].cuda()  # 0度
+            vid2 = vids[2].cuda()  # 90度
+            txt = input.get('txt').cuda()
+            tg = textgrid2dic(input.get('phonem'))
+
+            optimizer.zero_grad()
+            y1 = net(vid1)
+            y2 = net(vid2)
+            y = net(vid1)
+
+            loss = contrastive_phonem_loss(y1, y2, tg)
+            loss_sum += loss.item()
+            loss.backward()
+            if opt.is_optimize:
+                optimizer.step()
+
+            pred_txt = ctc_decode(y)
+            truth_txt = [MyDataset.arr2txt(txt[_], start=1) for _ in range(txt.size(0))]
+            train_wer.extend(MyDataset.wer(pred_txt, truth_txt))
+            train_cer.extend(MyDataset.cer(pred_txt, truth_txt))
+
+            # ★ step をここで増やす
+            global_step += 1
+
+            # イテレーションごとのログ（TensorBoard）
+            if global_step % opt.display == 0:
+                avg_wer = float(np.mean(train_wer))
+                avg_cer = float(np.mean(train_cer))
+                writer.add_scalar('train loss', loss.item(), global_step)
+                writer.add_scalar('train wer', avg_wer, global_step)
+                writer.add_scalar('train cer', avg_cer, global_step)
+                print('-' * 101)
+                print(f'epoch={epoch}, step={global_step}, loss={loss.item():.4f}, train_wer={avg_wer:.4f}')
+                print('-' * 101)
+            
+            # 検証
+            if global_step % opt.test_step == 0:
+                val_loss, val_wer, val_cer = test(model, net, contrastive_phonem_loss)
+
+                # ★ val_epoch と一緒に log。step は global_step
+                wandb.log({
+                    "val_epoch": val_epoch,
+                    "val_loss": float(val_loss),
+                    "val_cer": float(val_cer),
+                    "val_wer": float(val_wer),
+                }, step=global_step)
+
+                writer.add_scalar('val loss', val_loss, global_step)
+                writer.add_scalar('val wer', val_wer, global_step)
+                writer.add_scalar('val cer', val_cer, global_step)
+
+                print(f"[VAL] val_epoch={val_epoch}, step={global_step}, "
+                      f"loss={val_loss:.4f}, wer={val_wer:.4f}, cer={val_cer:.4f}")
+                
+                val_epoch += 1   # ★ validation 回数カウンタ
+
+        # ==== エポック終了後 ====
+        epoch_loss = loss_sum / len(loader)
+        epoch_cer = float(np.mean(train_cer)) if len(train_cer) > 0 else float("nan")
+        epoch_wer = float(np.mean(train_wer)) if len(train_wer) > 0 else float("nan")
+
+        train_logs['loss'].append(epoch_loss)
+        train_logs['cer'].append(epoch_cer)
+        train_logs['wer'].append(epoch_wer)
+
+        print(f"[DEBUG] epoch={epoch}, epoch_loss={epoch_loss}, "
+              f"epoch_cer={epoch_cer}, epoch_wer={epoch_wer}")
+
+        # ★ train_epoch をフィールドとして log。step は global_step（さっきの続き）
+        wandb.log({
+            "train_epoch": epoch,
+            "train_loss": epoch_loss,
+            "train_cer": epoch_cer,
+            "train_wer": epoch_wer,
+        }, step=global_step)
+
+        with open(csvname, 'a', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow([epoch, epoch_loss, epoch_wer, epoch_cer])
+
+        savename = f'{nowstr}_{opt.save_prefix}_loss_{epoch_loss:.4f}_wer_{epoch_wer:.4f}_cer_{epoch_cer:.4f}.pt'
+        (path, name) = os.path.split(savename)
+        if not os.path.exists(path):
+            os.makedirs(path)
+        torch.save(model.state_dict(), savename)
+
+        print(f'Epoch {epoch}: loss={epoch_loss:.4f}, cer={epoch_cer:.4f}, wer={epoch_wer:.4f}')
+
+    print('Training complete.')
+
+
 
 def combinationLoss(model, net):
     now = datetime.datetime.now()
@@ -1154,7 +1290,7 @@ if(__name__ == '__main__'):
     torch.manual_seed(opt.random_seed)
     torch.cuda.manual_seed_all(opt.random_seed)
     #maping(model, net)
-    #pre_train2(model, net)
+    pre_train3(model, net)
     #train(model,net)
     #combinationLoss(model,net)
-    train2(model,net)
+    #train2(model,net)

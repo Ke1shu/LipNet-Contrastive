@@ -1,7 +1,13 @@
-/align/
-/phonem/
-/lip/
+#symlink
+/align
+/phonem
+/lip
+#dir
 /wandb/
 /runs/
 /logs/
 __pycache__
+# すべての .pt ファイルを無視
+*.pt
+# .pt ファイルを含むディレクトリを無視
+**/*.pt/
