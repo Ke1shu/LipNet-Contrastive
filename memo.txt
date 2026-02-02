@@ -12,3 +12,16 @@ unseenval.txt
 同様に45度のディレクトリを指定している
 
 そこから、正面と横顔を読み込むように作りこんでいる
+
+
+lip,align,phonemのsymlink作る
+lip/spk1/v[1,3,5]/pic.jpg
+align/s1 u31.align
+phonem/s1 u31.TextGrid
+
+symlink
+lip: /mount/OuluVS2/OuluVS2/OuluVS2-zip/cropped_mouth_zero_png_phrase
+align: /mount/OuluVS2/ouluvs_script/mydata/align-pytorch
+phonem: /mount/OuluVS2/OuluVS2/OuluVS2-zip/mfaalign
+
+
